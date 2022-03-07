@@ -8,9 +8,10 @@ import os
 os.environ["BROWSER"] = "open"
 
 # Import libraries
-import re, sys, glob, html, argparse, jsbeautifier, webbrowser, subprocess, base64, ssl, xml.etree.ElementTree
+import re, sys, glob, html, argparse, jsbeautifier, webbrowser, subprocess, base64, ssl, xml.etree.ElementTree, requests
+import urllib3
+urllib3.disable_warnings()
 
-from gzip import GzipFile
 from string import Template
 
 try:
@@ -19,11 +20,6 @@ try:
 except ImportError:
     from io import BytesIO
     readBytesCustom = BytesIO
-
-try:
-    from urllib.request import Request, urlopen
-except ImportError:
-    from urllib2 import Request, urlopen
 
 # Regex used
 regex_str = r"""
@@ -114,36 +110,28 @@ def parser_input(input):
     return [path if os.path.exists(input) else parser_error("file could not \
 be found (maybe you forgot to add http/https).")]
 
-
 def send_request(url):
     '''
     Send requests with Requests
     '''
-    q = Request(url)
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) \
+        AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
+        'Accept': 'text/html,\
+        application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.8',
+        'Accept-Encoding': 'gzip',
+        'Cookie': args.cookies
+    }
 
-    q.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) \
-        AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36')
-    q.add_header('Accept', 'text/html,\
-        application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8')
-    q.add_header('Accept-Language', 'en-US,en;q=0.8')
-    q.add_header('Accept-Encoding', 'gzip')
-    q.add_header('Cookie', args.cookies)
-
+    data = None
     try:
-        sslcontext = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-        response = urlopen(q, timeout=args.timeout, context=sslcontext)
+        resp = requests.get(url, verify=False, headers=headers)
+        data = resp.text
     except:
-        sslcontext = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
-        response = urlopen(q, timeout=args.timeout, context=sslcontext)
+        pass
 
-    if response.info().get('Content-Encoding') == 'gzip':
-        data = GzipFile(fileobj=readBytesCustom(response.read())).read()
-    elif response.info().get('Content-Encoding') == 'deflate':
-        data = response.read().read()
-    else:
-        data = response.read()
-
-    return data.decode('utf-8', 'replace')
+    return data
 
 def getContext(list_matches, content, include_delimiter=0, context_delimiter_str="\n"):
     '''
@@ -327,6 +315,7 @@ if __name__ == "__main__":
     # Convert URLs to JS
     output = ''
     for url in urls:
+        endpoints = []
         if not args.burp:
             try:
                 file = send_request(url)
@@ -336,7 +325,8 @@ if __name__ == "__main__":
             file = url['js']
             url = url['url']
 
-        endpoints = parser_file(file, regex_str, mode, args.regex)
+        if file:
+            endpoints = parser_file(file, regex_str, mode, args.regex)
         if args.domain:
             for endpoint in endpoints:
                 endpoint = html.escape(endpoint["link"]).encode('ascii', 'ignore').decode('utf8')
